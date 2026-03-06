@@ -6,10 +6,43 @@ app = Flask(__name__)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-
 def get_db():
     conn = psycopg2.connect(DATABASE_URL)
     return conn
+
+
+def setup_database():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS players(
+        id SERIAL PRIMARY KEY,
+        name TEXT,
+        team TEXT,
+        nationality TEXT,
+        strike_rate FLOAT,
+        base_price INT,
+        current_bid INT
+    )
+    """)
+
+    cur.execute("SELECT COUNT(*) FROM players")
+    count = cur.fetchone()[0]
+
+    if count == 0:
+        cur.execute("""
+        INSERT INTO players(name,team,nationality,strike_rate,base_price,current_bid)
+        VALUES
+        ('Virat Kohli','RCB','Indian',138.5,50000,50000),
+        ('Rohit Sharma','MI','Indian',130.2,50000,50000),
+        ('Jos Buttler','RR','Overseas',149.1,50000,50000),
+        ('David Warner','DC','Overseas',142.3,50000,50000)
+        """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 @app.route("/")
@@ -24,7 +57,6 @@ def js():
 
 @app.route("/players")
 def players():
-
     nationality = request.args.get("type")
 
     conn = get_db()
@@ -59,7 +91,6 @@ def players():
 
 @app.route("/bid", methods=["POST"])
 def bid():
-
     data = request.json
     player_id = data["player_id"]
     bid_amount = int(data["bid"])
@@ -67,11 +98,7 @@ def bid():
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute(
-        "SELECT current_bid FROM players WHERE id=%s",
-        (player_id,)
-    )
-
+    cur.execute("SELECT current_bid FROM players WHERE id=%s", (player_id,))
     current = cur.fetchone()[0]
 
     if bid_amount <= current:
@@ -83,12 +110,13 @@ def bid():
     )
 
     conn.commit()
-
     cur.close()
     conn.close()
 
     return jsonify({"success": True})
 
+
+setup_database()
 
 if __name__ == "__main__":
     app.run(debug=True)
