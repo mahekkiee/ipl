@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>IPL Auction System</title>
+
+<style>
+
+body{
+font-family:Arial;
+background:#0f172a;
+color:white;
+text-align:center;
+}
+
+h1{
+margin-top:20px;
+}
+
+select{
+padding:10px;
+margin:20px;
+font-size:16px;
+border-radius:6px;
+}
+
+.container{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+gap:20px;
+padding:20px;
+}
+
+.card{
+
+background:#1e293b;
+padding:20px;
+border-radius:10px;
+box-shadow:0 0 10px rgba(0,0,0,0.3);
+
+}
+
+.player{
+font-size:22px;
+font-weight:bold;
+}
+
+.stat{
+margin:6px 0;
+}
+
+input{
+
+width:80%;
+padding:8px;
+margin-top:10px;
+border-radius:6px;
+border:none;
+
+}
+
+button{
+
+margin-top:10px;
+padding:10px 15px;
+background:#22c55e;
+border:none;
+color:white;
+border-radius:6px;
+cursor:pointer;
+
+}
+
+button:hover{
+background:#16a34a;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>IPL Auction Platform</h1>
+
+<select id="filter">
+<option value="all">All Players</option>
+<option value="Indian">Indian Players</option>
+<option value="Overseas">Overseas Players</option>
+</select>
+
+<div class="container" id="players"></div>
+
+<script src="/script.js"></script>
+
+</body>
+</html>
