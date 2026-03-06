@@ -1,119 +1,175 @@
 import os
-from flask import Flask, send_file, request, jsonify
+import logging
+from flask import Flask, jsonify, request, send_file
 import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("ipl-auction")
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 
 def get_db():
-    conn = psycopg2.connect(DATABASE_URL)
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL not set")
+
+    logger.info("Connecting to database")
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     return conn
 
 
 def setup_database():
-    conn = get_db()
-    cur = conn.cursor()
+    try:
+        conn = get_db()
+        cur = conn.cursor()
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS players(
-        id SERIAL PRIMARY KEY,
-        name TEXT,
-        team TEXT,
-        nationality TEXT,
-        strike_rate FLOAT,
-        base_price INT,
-        current_bid INT
-    )
-    """)
+        logger.info("Creating table if not exists")
 
-    cur.execute("SELECT COUNT(*) FROM players")
-    count = cur.fetchone()[0]
-
-    if count == 0:
         cur.execute("""
-        INSERT INTO players(name,team,nationality,strike_rate,base_price,current_bid)
-        VALUES
-        ('Virat Kohli','RCB','Indian',138.5,50000,50000),
-        ('Rohit Sharma','MI','Indian',130.2,50000,50000),
-        ('Jos Buttler','RR','Overseas',149.1,50000,50000),
-        ('David Warner','DC','Overseas',142.3,50000,50000)
+        CREATE TABLE IF NOT EXISTS players(
+            id SERIAL PRIMARY KEY,
+            name TEXT,
+            team TEXT,
+            nationality TEXT,
+            strike_rate FLOAT,
+            base_price INT,
+            current_bid INT
+        )
         """)
 
-    conn.commit()
-    cur.close()
-    conn.close()
+        cur.execute("SELECT COUNT(*) FROM players")
+        count = cur.fetchone()["count"]
+
+        if count == 0:
+            logger.info("Inserting seed players")
+
+            cur.execute("""
+            INSERT INTO players(name,team,nationality,strike_rate,base_price,current_bid)
+            VALUES
+            ('Virat Kohli','RCB','Indian',138.5,50000,50000),
+            ('Rohit Sharma','MI','Indian',130.2,50000,50000),
+            ('Jos Buttler','RR','Overseas',149.1,50000,50000),
+            ('David Warner','DC','Overseas',142.3,50000,50000)
+            """)
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        logger.info("Database ready")
+
+    except Exception as e:
+        logger.exception("Database setup failed")
 
 
 @app.route("/")
-def home():
+def index():
     return send_file("app.html")
 
 
 @app.route("/script.js")
-def js():
+def script():
     return send_file("script.js")
 
 
 @app.route("/players")
 def players():
-    nationality = request.args.get("type")
+    try:
+        nationality = request.args.get("type")
 
-    conn = get_db()
-    cur = conn.cursor()
+        conn = get_db()
+        cur = conn.cursor()
 
-    if nationality == "Indian":
-        cur.execute("SELECT * FROM players WHERE nationality='Indian'")
-    elif nationality == "Overseas":
-        cur.execute("SELECT * FROM players WHERE nationality='Overseas'")
-    else:
-        cur.execute("SELECT * FROM players")
+        if nationality == "Indian":
+            cur.execute("SELECT * FROM players WHERE nationality='Indian'")
+        elif nationality == "Overseas":
+            cur.execute("SELECT * FROM players WHERE nationality='Overseas'")
+        else:
+            cur.execute("SELECT * FROM players")
 
-    rows = cur.fetchall()
+        rows = cur.fetchall()
 
-    players = []
-    for r in rows:
-        players.append({
-            "id": r[0],
-            "name": r[1],
-            "team": r[2],
-            "nationality": r[3],
-            "strike_rate": r[4],
-            "base_price": r[5],
-            "current_bid": r[6]
-        })
+        cur.close()
+        conn.close()
 
-    cur.close()
-    conn.close()
+        return jsonify(rows)
 
-    return jsonify(players)
+    except Exception as e:
+        logger.exception("Players endpoint failed")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/bid", methods=["POST"])
 def bid():
-    data = request.json
-    player_id = data["player_id"]
-    bid_amount = int(data["bid"])
+    try:
+        data = request.json
+        player_id = data["player_id"]
+        bid_amount = int(data["bid"])
 
-    conn = get_db()
-    cur = conn.cursor()
+        conn = get_db()
+        cur = conn.cursor()
 
-    cur.execute("SELECT current_bid FROM players WHERE id=%s", (player_id,))
-    current = cur.fetchone()[0]
+        cur.execute("SELECT current_bid FROM players WHERE id=%s", (player_id,))
+        current = cur.fetchone()["current_bid"]
 
-    if bid_amount <= current:
-        return jsonify({"error": "Bid must be higher"}), 400
+        if bid_amount <= current:
+            return jsonify({"error": "Bid must be higher"}), 400
 
-    cur.execute(
-        "UPDATE players SET current_bid=%s WHERE id=%s",
-        (bid_amount, player_id)
-    )
+        cur.execute(
+            "UPDATE players SET current_bid=%s WHERE id=%s",
+            (bid_amount, player_id)
+        )
 
-    conn.commit()
-    cur.close()
-    conn.close()
+        conn.commit()
 
-    return jsonify({"success": True})
+        cur.close()
+        conn.close()
+
+        return jsonify({"success": True})
+
+    except Exception as e:
+        logger.exception("Bid endpoint failed")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/health")
+def health():
+    """Check if server and database are working."""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        cur.close()
+        conn.close()
+
+        return jsonify({
+            "status": "ok",
+            "database": "connected",
+            "database_url_set": bool(DATABASE_URL)
+        })
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "database": "failed",
+            "error": str(e),
+            "database_url_set": bool(DATABASE_URL)
+        }), 500
+
+
+@app.route("/debug")
+def debug():
+    """Return environment info for debugging."""
+    return jsonify({
+        "DATABASE_URL_exists": bool(DATABASE_URL),
+        "DATABASE_URL_preview": DATABASE_URL[:30] + "..." if DATABASE_URL else None,
+        "working_directory": os.getcwd(),
+        "files": os.listdir(".")
+    })
 
 
 setup_database()
