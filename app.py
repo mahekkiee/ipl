@@ -1,10 +1,12 @@
 import os
 import logging
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, request, send_file, session
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY","auction-secret")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ipl-auction")
@@ -15,161 +17,186 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 def get_db():
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL not set")
-
-    logger.info("Connecting to database")
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-    return conn
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
 
 def setup_database():
-    try:
-        conn = get_db()
-        cur = conn.cursor()
+    conn = get_db()
+    cur = conn.cursor()
 
-        logger.info("Creating table if not exists")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT
+    )
+    """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS players(
+        id SERIAL PRIMARY KEY,
+        name TEXT,
+        team TEXT,
+        nationality TEXT,
+        strike_rate FLOAT,
+        base_price INT,
+        current_bid INT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS bids(
+        id SERIAL PRIMARY KEY,
+        user_id INT,
+        player_id INT,
+        amount INT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    cur.execute("SELECT COUNT(*) FROM players")
+    if cur.fetchone()["count"] == 0:
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS players(
-            id SERIAL PRIMARY KEY,
-            name TEXT,
-            team TEXT,
-            nationality TEXT,
-            strike_rate FLOAT,
-            base_price INT,
-            current_bid INT
-        )
+        INSERT INTO players(name,team,nationality,strike_rate,base_price,current_bid)
+        VALUES
+        ('Virat Kohli','RCB','Indian',138.5,50000,50000),
+        ('Rohit Sharma','MI','Indian',130.2,50000,50000),
+        ('Jos Buttler','RR','Overseas',149.1,50000,50000),
+        ('David Warner','DC','Overseas',142.3,50000,50000)
         """)
 
-        cur.execute("SELECT COUNT(*) FROM players")
-        count = cur.fetchone()["count"]
-
-        if count == 0:
-            logger.info("Inserting seed players")
-
-            cur.execute("""
-            INSERT INTO players(name,team,nationality,strike_rate,base_price,current_bid)
-            VALUES
-            ('Virat Kohli','RCB','Indian',138.5,50000,50000),
-            ('Rohit Sharma','MI','Indian',130.2,50000,50000),
-            ('Jos Buttler','RR','Overseas',149.1,50000,50000),
-            ('David Warner','DC','Overseas',142.3,50000,50000)
-            """)
-
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        logger.info("Database ready")
-
-    except Exception as e:
-        logger.exception("Database setup failed")
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 @app.route("/")
-def index():
+def home():
     return send_file("app.html")
 
 
 @app.route("/script.js")
-def script():
+def js():
     return send_file("script.js")
+
+
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.json
+    username = data["username"]
+    password = generate_password_hash(data["password"])
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            "INSERT INTO users(username,password) VALUES(%s,%s)",
+            (username,password)
+        )
+        conn.commit()
+    except:
+        return jsonify({"error":"User exists"}),400
+
+    return jsonify({"success":True})
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.json
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT * FROM users WHERE username=%s",
+        (data["username"],)
+    )
+
+    user = cur.fetchone()
+
+    if not user or not check_password_hash(user["password"],data["password"]):
+        return jsonify({"error":"Invalid login"}),401
+
+    session["user_id"] = user["id"]
+
+    return jsonify({"success":True})
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return jsonify({"success":True})
 
 
 @app.route("/players")
 def players():
-    try:
-        nationality = request.args.get("type")
 
-        conn = get_db()
-        cur = conn.cursor()
+    nationality = request.args.get("type")
 
-        if nationality == "Indian":
-            cur.execute("SELECT * FROM players WHERE nationality='Indian'")
-        elif nationality == "Overseas":
-            cur.execute("SELECT * FROM players WHERE nationality='Overseas'")
-        else:
-            cur.execute("SELECT * FROM players")
+    conn = get_db()
+    cur = conn.cursor()
 
-        rows = cur.fetchall()
+    if nationality == "Indian":
+        cur.execute("SELECT * FROM players WHERE nationality='Indian'")
+    elif nationality == "Overseas":
+        cur.execute("SELECT * FROM players WHERE nationality='Overseas'")
+    else:
+        cur.execute("SELECT * FROM players")
 
-        cur.close()
-        conn.close()
+    rows = cur.fetchall()
 
-        return jsonify(rows)
-
-    except Exception as e:
-        logger.exception("Players endpoint failed")
-        return jsonify({"error": str(e)}), 500
+    return jsonify(rows)
 
 
 @app.route("/bid", methods=["POST"])
 def bid():
-    try:
-        data = request.json
-        player_id = data["player_id"]
-        bid_amount = int(data["bid"])
 
-        conn = get_db()
-        cur = conn.cursor()
+    if "user_id" not in session:
+        return jsonify({"error":"Login required"}),401
 
-        cur.execute("SELECT current_bid FROM players WHERE id=%s", (player_id,))
-        current = cur.fetchone()["current_bid"]
+    data = request.json
+    player_id = data["player_id"]
+    bid_amount = int(data["bid"])
 
-        if bid_amount <= current:
-            return jsonify({"error": "Bid must be higher"}), 400
+    conn = get_db()
+    cur = conn.cursor()
 
-        cur.execute(
-            "UPDATE players SET current_bid=%s WHERE id=%s",
-            (bid_amount, player_id)
-        )
+    cur.execute(
+        "SELECT current_bid FROM players WHERE id=%s",
+        (player_id,)
+    )
 
-        conn.commit()
+    current = cur.fetchone()["current_bid"]
 
-        cur.close()
-        conn.close()
+    if bid_amount <= current:
+        return jsonify({"error":"Bid must be higher"}),400
 
-        return jsonify({"success": True})
+    cur.execute(
+        "UPDATE players SET current_bid=%s WHERE id=%s",
+        (bid_amount,player_id)
+    )
 
-    except Exception as e:
-        logger.exception("Bid endpoint failed")
-        return jsonify({"error": str(e)}), 500
+    cur.execute(
+        "INSERT INTO bids(user_id,player_id,amount) VALUES(%s,%s,%s)",
+        (session["user_id"],player_id,bid_amount)
+    )
+
+    conn.commit()
+
+    return jsonify({"success":True})
 
 
 @app.route("/health")
 def health():
-    """Check if server and database are working."""
     try:
         conn = get_db()
         cur = conn.cursor()
         cur.execute("SELECT 1")
         cur.fetchone()
-        cur.close()
-        conn.close()
-
-        return jsonify({
-            "status": "ok",
-            "database": "connected",
-            "database_url_set": bool(DATABASE_URL)
-        })
-
+        return jsonify({"status":"ok"})
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "database": "failed",
-            "error": str(e),
-            "database_url_set": bool(DATABASE_URL)
-        }), 500
-
-
-@app.route("/debug")
-def debug():
-    """Return environment info for debugging."""
-    return jsonify({
-        "DATABASE_URL_exists": bool(DATABASE_URL),
-        "DATABASE_URL_preview": DATABASE_URL[:30] + "..." if DATABASE_URL else None,
-        "working_directory": os.getcwd(),
-        "files": os.listdir(".")
-    })
+        return jsonify({"status":"error","error":str(e)})
 
 
 setup_database()
