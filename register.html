@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Register - IPL Auction</title>
+
+<style>
+
+body{
+background:#0f172a;
+color:white;
+font-family:Arial;
+text-align:center;
+padding-top:100px;
+}
+
+input,button{
+padding:10px;
+margin:10px;
+border-radius:6px;
+border:none;
+}
+
+button{
+background:#22c55e;
+color:white;
+cursor:pointer;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>Create Account</h1>
+
+<input id="username" placeholder="username">
+<input id="password" type="password" placeholder="password">
+
+<br>
+
+<button onclick="register()">Register</button>
+
+<p>Already have account? <a href="/login-page" style="color:#38bdf8">Login</a></p>
+
+<script>
+
+async function register(){
+
+let username=document.getElementById("username").value
+let password=document.getElementById("password").value
+
+let res=await fetch("/register",{
+method:"POST",
+headers:{ "Content-Type":"application/json" },
+body:JSON.stringify({username,password})
+})
+
+let data=await res.json()
+
+if(data.success){
+alert("Account created")
+window.location="/login-page"
+}else{
+alert(data.error)
+}
+
+}
+
+</script>
+
+</body>
+</html>
