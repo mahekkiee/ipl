@@ -1,28 +1,15 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-
-<title>IPL Auction System</title>
+<title>IPL Auction</title>
 
 <style>
 
 body{
-font-family:Arial;
 background:#0f172a;
 color:white;
+font-family:Arial;
 text-align:center;
-}
-
-h1{
-margin-top:20px;
-}
-
-select{
-padding:10px;
-margin:20px;
-font-size:16px;
-border-radius:6px;
 }
 
 .container{
@@ -33,47 +20,22 @@ padding:20px;
 }
 
 .card{
-
 background:#1e293b;
 padding:20px;
 border-radius:10px;
-box-shadow:0 0 10px rgba(0,0,0,0.3);
-
 }
 
-.player{
-font-size:22px;
-font-weight:bold;
-}
-
-.stat{
-margin:6px 0;
-}
-
-input{
-
-width:80%;
-padding:8px;
-margin-top:10px;
+input,button{
+padding:10px;
+margin:5px;
 border-radius:6px;
 border:none;
-
 }
 
 button{
-
-margin-top:10px;
-padding:10px 15px;
 background:#22c55e;
-border:none;
 color:white;
-border-radius:6px;
 cursor:pointer;
-
-}
-
-button:hover{
-background:#16a34a;
 }
 
 </style>
@@ -84,10 +46,26 @@ background:#16a34a;
 
 <h1>IPL Auction Platform</h1>
 
+<div id="auth">
+
+<h3>Register</h3>
+<input id="reg-user" placeholder="username">
+<input id="reg-pass" type="password" placeholder="password">
+<button onclick="register()">Register</button>
+
+<h3>Login</h3>
+<input id="log-user" placeholder="username">
+<input id="log-pass" type="password" placeholder="password">
+<button onclick="login()">Login</button>
+
+</div>
+
+<hr>
+
 <select id="filter">
 <option value="all">All Players</option>
-<option value="Indian">Indian Players</option>
-<option value="Overseas">Overseas Players</option>
+<option value="Indian">Indian</option>
+<option value="Overseas">Overseas</option>
 </select>
 
 <div class="container" id="players"></div>
