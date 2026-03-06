@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Login - IPL Auction</title>
+<style>
+body{
+background:#0f172a;
+color:white;
+font-family:Arial;
+text-align:center;
+padding-top:100px;
+}
+
+input,button{
+padding:10px;
+margin:10px;
+border-radius:6px;
+border:none;
+}
+
+button{
+background:#22c55e;
+color:white;
+cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Login</h1>
+
+<input id="username" placeholder="username">
+<input id="password" type="password" placeholder="password">
+
+<br>
+
+<button onclick="login()">Login</button>
+
+<p>New user? <a href="/register-page" style="color:#38bdf8">Register</a></p>
+
+<script>
+async function login(){
+
+let username=document.getElementById("username").value
+let password=document.getElementById("password").value
+
+let res=await fetch("/login",{
+method:"POST",
+headers:{ "Content-Type":"application/json" },
+body:JSON.stringify({username,password})
+})
+
+let data=await res.json()
+
+if(data.success){
+window.location="/"
+}else{
+alert(data.error)
+}
+
+}
+</script>
+
+</body>
+</html>
