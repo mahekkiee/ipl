@@ -1,17 +1,25 @@
+import os
 from flask import Flask, send_file, request, jsonify
-import sqlite3
+import psycopg2
 
 app = Flask(__name__)
 
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+
 def get_db():
-    conn = sqlite3.connect("players.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(DATABASE_URL)
     return conn
 
 
 @app.route("/")
 def home():
     return send_file("app.html")
+
+
+@app.route("/script.js")
+def js():
+    return send_file("script.js")
 
 
 @app.route("/players")
@@ -33,7 +41,18 @@ def players():
 
     players = []
     for r in rows:
-        players.append(dict(r))
+        players.append({
+            "id": r[0],
+            "name": r[1],
+            "team": r[2],
+            "nationality": r[3],
+            "strike_rate": r[4],
+            "base_price": r[5],
+            "current_bid": r[6]
+        })
+
+    cur.close()
+    conn.close()
 
     return jsonify(players)
 
@@ -48,54 +67,28 @@ def bid():
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT current_bid FROM players WHERE id=?", (player_id,))
+    cur.execute(
+        "SELECT current_bid FROM players WHERE id=%s",
+        (player_id,)
+    )
+
     current = cur.fetchone()[0]
 
     if bid_amount <= current:
-        return jsonify({"error":"Bid must be higher"}),400
+        return jsonify({"error": "Bid must be higher"}), 400
 
     cur.execute(
-        "UPDATE players SET current_bid=? WHERE id=?",
+        "UPDATE players SET current_bid=%s WHERE id=%s",
         (bid_amount, player_id)
     )
 
     conn.commit()
 
-    return jsonify({"success":True})
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True})
 
 
 if __name__ == "__main__":
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS players(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    team TEXT,
-    nationality TEXT,
-    strike_rate REAL,
-    base_price INTEGER,
-    current_bid INTEGER
-    )
-    """)
-
-    cur.execute("SELECT COUNT(*) FROM players")
-    if cur.fetchone()[0] == 0:
-
-        players = [
-        ("Virat Kohli","RCB","Indian",138.5,50000,50000),
-        ("Rohit Sharma","MI","Indian",130.1,50000,50000),
-        ("Jos Buttler","RR","Overseas",149.3,50000,50000),
-        ("David Warner","DC","Overseas",142.0,50000,50000)
-        ]
-
-        cur.executemany(
-        "INSERT INTO players(name,team,nationality,strike_rate,base_price,current_bid) VALUES (?,?,?,?,?,?)",
-        players
-        )
-
-        conn.commit()
-
     app.run(debug=True)
