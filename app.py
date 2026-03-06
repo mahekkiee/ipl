@@ -69,9 +69,10 @@ def setup_database():
     cur.close()
     conn.close()
 
-
 @app.route("/")
 def home():
+    if "user_id" not in session:
+        return send_file("login.html")
     return send_file("app.html")
 
 
@@ -212,4 +213,5 @@ setup_database()
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
