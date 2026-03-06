@@ -122,6 +122,15 @@ def login():
 
     return jsonify({"success":True})
 
+@app.route("/login-page")
+def login_page():
+    return send_file("login.html")
+
+
+@app.route("/register-page")
+def register_page():
+    return send_file("register.html")
+
 
 @app.route("/logout")
 def logout():
@@ -203,3 +212,4 @@ setup_database()
 
 if __name__ == "__main__":
     app.run(debug=True)
+
